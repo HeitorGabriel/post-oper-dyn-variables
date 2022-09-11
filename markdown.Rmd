@@ -1,0 +1,236 @@
+---
+title: "Shiny: Operations With Dynamically Created Inputs"
+author: "[Heitor Gabriel S. Monteiro](https://sites.google.com/view/heitor-gabriel-monteiro/p%C3%A1gina-inicial)"
+date: '`r Sys.Date()`'
+geometry: margin=1in
+fontfamily: mathpazo
+fontsize: 17pt
+output:
+  html_document:
+    theme:
+      bg: "#fff5e5"
+      fg: "#57330f"
+      primary: "#4f75e0"
+      base_font:
+        google: "Fira Sans"
+      code_font:
+        google: "JetBrains Mono"
+    highlight: tango
+  pdf_document:
+    toc: true
+    number_sections: true
+    highlight: tango
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(tidyverse)
+library(bslib)
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this post, I make an Shiny app that allows the user to choose the quantity of the terms that will be made part of some exemplar operation with data as follows:
+
+![](Screenshot%20from%202022-09-08%2023-16-01.png)
+
+The challenge is to cover in some operation the new variables made by the user.\
+Firstly, I built a basic structure of the app in the User Interface (UI) part, following the Sidebar Layout with two columns. Just for perfumery, I put a theme provided by `bslib` package:
+
+```{r, eval = FALSE}
+
+ui <- fluidPage( theme =  bslib::bs_theme(bootswatch = "litera"),
+	sidebarLayout(
+	sidebarPanel(
+		"sidebar content..."
+	),
+	mainPanel(
+		fluidRow(
+			column(width = 4, "Column content..."),
+			column(width = 6, "Column content..."))
+	)
+))  # end of the sidebarLayout and fluidPage
+
+```
+
+Now, create the quantities' selector of terms by the user with `selectInput( inputId="qntt_terms", ...`. **It needs to be chosen before the terms' value because it restarts the field without saving the value if it is filled.** So, in this example, the user can't write the value and click to add one more field. In my example, I will make the first term independent of the selector, understanding the idea, you can put it in the selector's function of creation of terms. So, the first input is `numericInput( inputId="term_1", ...` and the space to the new terms is the dynamic UI `uiOutput("new_terms")`.
+
+```{r, eval = FALSE}
+
+ui <- fluidPage( theme =  bslib::bs_theme(bootswatch = "litera"),
+	sidebarLayout(
+	sidebarPanel(
+		selectInput("qntt_terms",
+						label = "Number of Terms",
+						choices = 1:7,
+						selected = 1),
+		numericInput("term_1", "Put a Number (1):", 0),
+		uiOutput("new_terms")
+	),
+	mainPanel(
+		fluidRow(
+			column(width = 4, "Column content..."),
+			column(width = 6, "Column content..."))
+	)
+))  # end of the sidebarLayout and fluidPage
+```
+
+Now, make the server part. The named earlier dynamic UI `new_terms` will be made by `new_t()` reactive operation:
+
+```{r, eval = FALSE}
+server <- function(input, output, session) {
+
+	new_t <- reactive({
+		"counter and terms' creator"
+	})       # end of the reactive
+
+	output$new_terms <- renderUI({ new_t() })
+}
+	
+```
+
+The `new_t()` takes `qntt_terms` as the number of times that will be printed the same numeric input that the `term_1` but making new names to this new fields with the `lapply(2:n, function(i){ ...inputId=paste0("term_",i)... }` structure. The `if(n>1){...}` is because I let the first term independent and it will run only since two:
+
+```{r, eval = FALSE}
+server <- function(input, output, session) {
+
+new_t <- reactive({
+		n <- input$qntt_terms |> as.numeric()
+		if(n>1){
+			lapply(2:n, function(i) {
+				br()
+				numericInput(inputId = paste0("term_",i),
+								 label = paste0("Put a Number (", i,"):"), 0)
+			}) # end of the function and lapply
+		}     # end of the if(n>1)
+	}) 
+
+	output$new_terms <- renderUI({ new_t() })
+}
+```
+
+I create this new example data to make part of the operations with the new terms:
+
+```{r, eval = FALSE}
+data_ex <- tibble("col_a" = rnorm(7),
+					  "col_b" = rnorm(7),
+					  "col_c" = rnorm(7))
+```
+
+Now, still in server part, make the function `operation(wich_col)` that handle all the i= 1,..., n terms by `input[[paste0("term_",i)]]`. This is the core of the idea of operations with dynamically created variables.
+
+<p style="text-align: center;">
+
+`for (i in 1:req(input$qntt_terms)) {... input[[paste0("term_",i)]] ...}`
+
+</p>
+
+In this example, I make a multiplication with the correspondent *i-th* row of the `wich_col` data column. It returns a vector of results.
+
+```{r, eval = FALSE}
+
+operation <- function(which_col){
+		temp_vect <- vector()
+		for (i in 1:req(input$qntt_terms)) {
+			temp_vect[i] <-
+				req(input[[paste0("term_",i)]]) *
+				data_ex |> pull(which_col) |> nth(i)
+		}
+		return(temp_vect)
+	}
+
+```
+
+In first column of main panel, I show the data with `tableOutput("data_ex_call")` in UI part that requires an `output$data_ex_call <- renderTable()` in server part. In the second column, I print some uses of the created function. Join server, ui, and the data, we have:
+
+```{r, eval=FALSE}
+
+library(shiny)
+library(bslib)
+library(tidyverse)
+
+data_ex <- tibble("col_a" = rnorm(7),
+					  "col_b" = rnorm(7),
+					  "col_c" = rnorm(7))
+
+ui <- fluidPage( theme =  bslib::bs_theme(bootswatch = "litera"),
+	sidebarLayout(
+	sidebarPanel(
+		selectInput("qntt_terms",
+						label = "Number of Terms",
+						choices = 1:7,
+						selected = 1),
+		numericInput("term_1", "Put a Number (1):", 0),
+		uiOutput("new_terms")
+	),
+	mainPanel(
+		fluidRow(
+			column(width = 4, "The data to be multiplied row by term:" |> h3(),
+					 tableOutput("data_ex_call")),
+			column(width = 6,
+					 "The Sum with A col results:" |> h3(),
+					 textOutput("sum_a_terms"),
+					 br(),
+					 "The Prod with B col results:" |> h3(),
+					 textOutput("prod_b_terms"),
+					 br(),
+					 markdown("Vector of Output of the `operation(which_col = 'col_a')`:") |> h3(),
+					 textOutput("test_of_func")
+	))
+	)
+))  # end of the sidebarLayout and fluidPage
+
+server <- function(input, output, session) {
+
+	new_t <- reactive({
+		n <- input$qntt_terms |> as.numeric()
+		if(n>1){
+			lapply(2:n, function(i) {
+				br()
+				numericInput(inputId = paste0("term_",i),
+								 label = paste0("Put a Number (", i,"):"), 0)
+			}) # end of the function and lapply
+		}     # end of the if(n>1)
+	})       # end of the reactive
+
+	output$new_terms <- renderUI({ new_t() })
+	
+	operation <- function(which_col){
+		temp_vect <- vector()
+		for (i in 1:req(input$qntt_terms)) {
+			temp_vect[i] <-
+				req(input[[paste0("term_",i)]]) *
+				data_ex |> pull(which_col) |> nth(i)
+		}
+		return(temp_vect)
+	}
+
+	output$sum_a_terms <- renderText({
+		operation(which_col = "col_a") |> sum()
+	})
+	output$prod_b_terms <- renderText({
+		operation(which_col = "col_b") |> prod()
+	})
+	output$test_of_func <- renderText({
+		operation(which_col = "col_a")
+	})
+	
+	output$data_ex_call <- renderTable({data_ex},
+												  striped = TRUE,
+												  digits = 2)  
+	
+}
+
+shinyApp(ui, server)
+
+```
+
+This is the app:
+
+```{r echo=FALSE, fig.height=15, fig.width=11, message=FALSE, warning=FALSE}
+
+knitr::include_app("https://heitor-gabriel-mont.shinyapps.io/dyn_var_post/")
+```
+
+I thanks any commentary and helps. Finally, I thanks to the [socialscientist](https://stackoverflow.com/users/3614648/socialscientist) to help me with this issue.
