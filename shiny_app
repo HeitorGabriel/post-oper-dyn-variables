@@ -1,0 +1,77 @@
+library(shiny)
+library(bslib)
+library(tidyverse)
+
+data_ex <- tibble("col_a" = rnorm(7),
+					  "col_b" = rnorm(7),
+					  "col_c" = rnorm(7))
+
+ui <- fluidPage( theme =  bslib::bs_theme(bootswatch = "litera"),
+	sidebarLayout(
+	sidebarPanel(
+		selectInput("qntt_terms",
+						label = "Number of Terms",
+						choices = 1:7,
+						selected = 1),
+		numericInput("term_1", "Put a Number (1):", 0),
+		uiOutput("new_terms")
+	),
+	mainPanel(
+		fluidRow(
+			column(width = 4, "The data to be multiplied row by term:" |> h3(),
+					 tableOutput("data_ex_call")),
+			column(width = 6,
+					 "The Sum with A col results:" |> h3(),
+					 textOutput("sum_a_terms"),
+					 br(),
+					 "The Prod with B col results:" |> h3(),
+					 textOutput("prod_b_terms"),
+					 br(),
+					 markdown("Vector of Output of the `operation(which_col = 'col_a')`:") |> h3(),
+					 textOutput("test_of_func")
+	))
+	)
+))  # end of the sidebarLayout and fluidPage
+
+server <- function(input, output, session) {
+
+	new_t <- reactive({
+		n <- input$qntt_terms |> as.numeric()
+		if(n>1){
+			lapply(2:n, function(i) {
+				br()
+				numericInput(inputId = paste0("term_",i),
+								 label = paste0("Put a Number (", i,"):"), 0)
+			}) # end of the function and lapply
+		}     # end of the if(n>1)
+	})       # end of the reactive
+
+	output$new_terms <- renderUI({ new_t() })
+	
+	operation <- function(which_col){
+		temp_vect <- vector()
+		for (i in 1:req(input$qntt_terms)) {
+			temp_vect[i] <-
+				req(input[[paste0("term_",i)]]) *
+				data_ex |> pull(which_col) |> nth(i)
+		}
+		return(temp_vect)
+	}
+
+	output$sum_a_terms <- renderText({
+		operation(which_col = "col_a") |> sum()
+	})
+	output$prod_b_terms <- renderText({
+		operation(which_col = "col_b") |> prod()
+	})
+	output$test_of_func <- renderText({
+		operation(which_col = "col_a")
+	})
+	
+	output$data_ex_call <- renderTable({data_ex},  
+												  striped = TRUE,  
+												  digits = 2)  
+	
+}
+
+shinyApp(ui, server)
